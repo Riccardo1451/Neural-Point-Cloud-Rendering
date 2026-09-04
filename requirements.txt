@@ -1,0 +1,29 @@
+# --- PyTorch con supporto CUDA (build per GPU NVIDIA recenti, es. RTX 4080) ---
+# Se nvidia-smi mostra una CUDA Version diversa da 12.1, cambia "cu121" nell'URL sotto
+# (es. cu118, cu124) con quella compatibile col tuo driver.
+--extra-index-url https://download.pytorch.org/whl/cu121
+torch>=2.2
+torchvision>=0.17
+
+# --- Config management ---
+pyyaml==6.0.1
+omegaconf==2.3.0
+
+# --- Elaborazione immagini / depth ---
+opencv-python==4.9.0.80
+Pillow==10.2.0
+scikit-image==0.22.0
+
+# --- Point cloud: gestione, debug visivo, downsampling ---
+open3d==0.19.0
+
+# --- Numerico ---
+numpy==1.26.4
+scipy==1.12.0
+
+# --- Logging / monitoraggio training ---
+tensorboard==2.16.2
+tqdm==4.66.2
+
+# --- Visualizzazione / confronti per la presentazione ---
+matplotlib==3.8.3
