@@ -1,7 +1,12 @@
 # Dati e modelli
 data/
 checkpoints/
-outputs/
+outputs/logs/
+
+checkpoints_chess/
+outputs_chess/logs/
+checkpoints_fire/
+outputs_fire/logs/
 
 # Python
 __pycache__/
