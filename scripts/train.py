@@ -1,19 +1,6 @@
-"""
-train.py
-
-Entry point del training. Mette insieme tutti i pezzi verificati finora:
-point cloud precalcolata, feature dei punti, voxelizzazione PyTorch, rete,
-perceptual loss - e li allena insieme.
-
-Prerequisito: aver gia' lanciato precompute_scene_pointcloud.py per
-generare il file di point cloud fusa.
-
-Uso:
-    python scripts/train.py \
-        --sequence_path data/raw/7scenes/chess/seq-01 \
-        --pointcloud_path data/processed/chess_seq01_pointcloud.pt \
-        --num_epochs 30
-"""
+# Script di training: point cloud precalcolata, feature dei punti, rete e perceptual loss.
+# Prima bisogna aver lanciato precompute_scene_pointcloud.py.
+# Uso: python scripts/train.py --sequence_path data/raw/7scenes/chess/seq-01 --pointcloud_path data/processed/chess_seq01_pointcloud.pt --num_epochs 30
 
 import argparse
 import os
@@ -57,20 +44,17 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
 
-    # --- Point cloud globale precalcolata ---
     print(f"Carico point cloud da: {args.pointcloud_path}")
     pc_data = torch.load(args.pointcloud_path)
     points_world = pc_data["points_world"]
     print(f"Punti nella scena: {points_world.shape[0]:,}")
 
-    # --- Intrinseci riscalati alla risoluzione di training ---
-    sample_depth_path = None
+    # gli intrinseci vanno riscalati alla risoluzione di training
     all_ids = list_available_frame_ids(args.sequence_path)
     sample_depth = load_depth(os.path.join(args.sequence_path, f"frame-{all_ids[0]:06d}.depth.png"))
     orig_h, orig_w = sample_depth.shape
     intrinsics = scale_intrinsics(DEFAULT_INTRINSICS, (orig_h, orig_w), (args.height, args.width))
 
-    # --- Split train/val e DataLoader ---
     train_ids, val_ids = split_train_val(all_ids, val_every=args.val_every_n_frames)
     print(f"Frame di training: {len(train_ids)}, validazione: {len(val_ids)}")
 
@@ -80,9 +64,8 @@ def main():
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=2)
     val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=2)
 
-    # --- Modello, feature dei punti, loss ---
     point_feature_table = PointFeatureTable(points_world.shape[0], feature_dim=args.feature_dim)
-    in_channels = args.feature_dim + 3  # + direzione di vista
+    in_channels = args.feature_dim + 3  # più la direzione di vista
 
     model = MultiPlaneRenderNetwork(
         in_channels=in_channels, base_channels=args.base_channels, num_levels=args.num_levels
@@ -108,7 +91,6 @@ def main():
     if args.resume_from is not None:
         start_epoch = trainer.load_checkpoint(args.resume_from) + 1
 
-    # --- Loop di training ---
     for epoch in range(start_epoch, args.num_epochs):
         epoch_train_losses = []
         for batch_idx, (images, poses) in enumerate(train_loader):
@@ -118,7 +100,7 @@ def main():
 
         mean_train_loss = sum(epoch_train_losses) / len(epoch_train_losses)
 
-        # --- Validazione ---
+        # validazione
         epoch_val_losses = []
         last_val_images = None
         last_val_preds = None
@@ -133,7 +115,7 @@ def main():
         trainer.writer.add_scalar("loss/train_epoch", mean_train_loss, epoch)
         trainer.writer.add_scalar("loss/val_epoch", mean_val_loss, epoch)
 
-        # --- Log visivo: confronto target vs predizione su un campione di validazione ---
+        # qualche immagine di validazione su tensorboard
         if last_val_images is not None:
             trainer.writer.add_images("val/target", last_val_images[:4], epoch)
             trainer.writer.add_images("val/predicted", last_val_preds[:4].clamp(0, 1), epoch)

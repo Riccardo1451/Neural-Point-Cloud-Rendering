@@ -1,25 +1,6 @@
-"""
-render_novel_view.py
-
-Dimostra la sintesi di VERE nuove viste: interpola tra le pose di due
-frame esistenti della sequenza (posizione: interpolazione lineare;
-rotazione: SLERP, la stessa tecnica di interpolazione sferica vista per i
-quaternioni) e chiede al modello di renderizzare i punti intermedi -
-pose che NON esistono come frame reali nella sequenza.
-
-Nota: per queste pose intermedie non esiste un ground truth con cui fare
-un confronto quantitativo (nessun frame reale corrisponde esattamente a
-quella pose) - questo e' normale, l'obiettivo qui e' qualitativo: vedere
-se il modello produce una transizione plausibile e coerente tra le due
-viste note, non calcolare metriche.
-
-Uso:
-    python scripts/render_novel_view.py \
-        --sequence_path data/raw/7scenes/chess/seq-01 \
-        --pointcloud_path data/processed/chess_seq01_pointcloud.pt \
-        --checkpoint_path checkpoints/checkpoint_latest.pt \
-        --frame_id_a 0 --frame_id_b 50 --num_steps 7
-"""
+# Renderizza viste nuove interpolando tra le pose di due frame (lerp per la posizione, SLERP per la rotazione).
+# Per le pose intermedie non c'è ground truth, quindi il risultato si valuta solo a occhio.
+# Uso: python scripts/render_novel_view.py --sequence_path data/raw/7scenes/chess/seq-01 --pointcloud_path data/processed/chess_seq01_pointcloud.pt --checkpoint_path checkpoints/checkpoint_latest.pt --frame_id_a 0 --frame_id_b 50 --num_steps 7
 
 import argparse
 import os
@@ -38,13 +19,7 @@ from src.eval.inference_utils import load_scene_pointcloud, load_trained_model, 
 
 
 def interpolate_pose(pose_a: np.ndarray, pose_b: np.ndarray, t: float) -> np.ndarray:
-    """
-    Interpola tra due pose camera-to-world.
-    - Posizione: interpolazione lineare (lerp)
-    - Rotazione: SLERP (interpolazione sferica) - stessa idea della Lezione 4
-      sui quaternioni, qui applicata alla rotazione della camera invece che
-      a un oggetto animato
-    """
+    """Interpola tra due pose camera-to-world: lerp sulla traslazione e SLERP sulla rotazione."""
     R_a, R_b = pose_a[:3, :3], pose_b[:3, :3]
     t_a, t_b = pose_a[:3, 3], pose_b[:3, 3]
 

@@ -1,28 +1,8 @@
-"""
-precompute_scene_pointcloud.py
-
-Fonde molti frame della sequenza in un'UNICA point cloud persistente della
-scena, e la salva su disco. Questa point cloud e' la "geometria fissa" su
-cui poi alleniamo le feature per punto + la rete - va calcolata una sola
-volta, non a ogni avvio del training.
-
-A differenza dello script di debug (debug_voxelization_fused.py, che
-selezionava frame per baseline attorno a UN target, per un confronto
-visivo pulito), qui fondiamo frame sparsi su TUTTA la sequenza per avere
-la copertura piu' ampia possibile della scena. Non ci preoccupiamo troppo
-di eventuali inconsistenze/fantasmi tra viste molto diverse: a differenza
-della "ricostruzione grezza" usata per debug (media cieca), la RETE che
-alleneremo impara pesi di blending adattivi che possono imparare a pesare
-meno punti inconsistenti - è esattamente il vantaggio del metodo rispetto
-a una media fissa.
-
-Uso:
-    python scripts/precompute_scene_pointcloud.py \
-        --sequence_path data/raw/7scenes/chess/seq-01 \
-        --output_path data/processed/chess_seq01_pointcloud.pt \
-        --frame_stride 5 \
-        --pixel_stride 2
-"""
+# Fonde i frame di tutta la sequenza in un'unica point cloud e la salva su disco.
+# Va lanciato una volta sola prima del training.
+# Qui non si sceglie per baseline come nel debug: si vuole coprire tutta la scena,
+# eventuali punti incoerenti tra viste li gestisce la rete con i pesi di blending.
+# Uso: python scripts/precompute_scene_pointcloud.py --sequence_path data/raw/7scenes/chess/seq-01 --output_path data/processed/chess_seq01_pointcloud.pt --frame_stride 5 --pixel_stride 2
 
 import argparse
 import os
@@ -65,7 +45,7 @@ def main():
     torch.save(
         {
             "points_world": torch.from_numpy(points_world).float(),
-            "colors": torch.from_numpy(colors).float(),  # solo per riferimento/debug visivo, non usati nel training
+            "colors": torch.from_numpy(colors).float(),  # non usati nel training, servono a z-buffer e debug
             "sequence_path": args.sequence_path,
             "source_frame_ids": selected_ids,
         },

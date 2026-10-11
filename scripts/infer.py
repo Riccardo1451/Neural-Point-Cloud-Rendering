@@ -1,23 +1,6 @@
-"""
-infer.py
-
-Lo script che chiude il cerchio: carica un checkpoint allenato, sceglie
-uno o piu' frame della sequenza come "vista bersaglio", e confronta tre
-cose fianco a fianco:
-1. Ground truth (l'immagine reale)
-2. Rendering del modello neurale allenato
-3. Rendering z-buffer classico (baseline), usando gli stessi punti ma
-   con la regola "vince il piu' vicino" invece della rete
-
-Calcola anche PSNR/SSIM per entrambi i metodi rispetto al ground truth.
-
-Uso:
-    python scripts/infer.py \
-        --sequence_path data/raw/7scenes/chess/seq-01 \
-        --pointcloud_path data/processed/chess_seq01_pointcloud.pt \
-        --checkpoint_path checkpoints/checkpoint_latest.pt \
-        --frame_ids 0 50 100
-"""
+# Carica un checkpoint e per i frame scelti mette a confronto ground truth,
+# rendering neurale e z-buffer, con PSNR e SSIM.
+# Uso: python scripts/infer.py --sequence_path data/raw/7scenes/chess/seq-01 --pointcloud_path data/processed/chess_seq01_pointcloud.pt --checkpoint_path checkpoints/checkpoint_latest.pt --frame_ids 0 50 100
 
 import argparse
 import os
@@ -57,10 +40,9 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
 
-    # --- Point cloud e feature table ---
     pc_data = torch.load(args.pointcloud_path)
     points_world = pc_data["points_world"].to(device)
-    colors_np = pc_data["colors"].numpy()  # servono come RGB per lo z-buffer di baseline
+    colors_np = pc_data["colors"].numpy()  # i colori veri servono solo allo z-buffer
     points_world_np = points_world.cpu().numpy()
 
     checkpoint = torch.load(args.checkpoint_path, map_location=device)
@@ -77,7 +59,6 @@ def main():
 
     print(f"Checkpoint caricato (epoca {checkpoint['epoch']})")
 
-    # --- Intrinseci riscalati ---
     sample_depth = load_depth(os.path.join(args.sequence_path, f"frame-{args.frame_ids[0]:06d}.depth.png"))
     orig_h, orig_w = sample_depth.shape
     intrinsics = scale_intrinsics(DEFAULT_INTRINSICS, (orig_h, orig_w), (args.height, args.width))
@@ -92,7 +73,6 @@ def main():
 
         target_resized = cv2.resize(target_color, (args.width, args.height), interpolation=cv2.INTER_AREA)
 
-        # --- Rendering neurale ---
         with torch.no_grad():
             camera_position = pose[:3, 3]
             features = build_point_input_features(point_feature_table, points_world, camera_position)
@@ -100,16 +80,15 @@ def main():
                 points_world, features, pose, intrinsics,
                 height=args.height, width=args.width, num_planes=args.num_planes,
             )
-            volume_input = volume.permute(3, 0, 1, 2).unsqueeze(0)  # (1, C, P, H, W)
+            volume_input = volume.permute(3, 0, 1, 2).unsqueeze(0)
             output = model(volume_input)
             neural_render = output["blended_image"][0].permute(1, 2, 0).cpu().numpy()
 
-        # --- Rendering z-buffer di baseline (stessa risoluzione, stessa point cloud) ---
         zbuffer_render, zbuffer_mask = render_zbuffer(
             points_world_np, colors_np, pose_np, intrinsics, args.height, args.width
         )
 
-        # --- Metriche ---
+        # il PSNR dello z-buffer è solo sui pixel coperti, altrimenti lo sfondo nero lo falsa
         psnr_neural = compute_psnr(neural_render, target_resized)
         psnr_zbuffer = compute_psnr(zbuffer_render, target_resized, mask=zbuffer_mask)
         ssim_neural = compute_ssim(neural_render, target_resized)
@@ -119,7 +98,6 @@ def main():
         print(f"  Neurale  - PSNR: {psnr_neural:.2f} dB, SSIM: {ssim_neural:.4f}")
         print(f"  Z-buffer - PSNR: {psnr_zbuffer:.2f} dB, SSIM: {ssim_zbuffer:.4f} (calcolato solo sui pixel coperti)")
 
-        # --- Visualizzazione a confronto ---
         fig, axes = plt.subplots(1, 3, figsize=(15, 5))
         axes[0].imshow(target_resized)
         axes[0].set_title("Ground truth")

@@ -1,21 +1,6 @@
-"""
-noise_robustness_experiment.py
-
-L'ESPERIMENTO CENTRALE del progetto: per una serie crescente di livelli
-di rumore sintetico iniettato nelle posizioni 3D dei punti, confronta
-PSNR/SSIM del rendering neurale vs z-buffer classico rispetto al ground
-truth. Se il metodo funziona come promesso dal paper, il rendering
-neurale dovrebbe degradare molto piu' lentamente dello z-buffer
-all'aumentare del rumore.
-
-Uso:
-    python scripts/noise_robustness_experiment.py \
-        --sequence_path data/raw/7scenes/chess/seq-01 \
-        --pointcloud_path data/processed/chess_seq01_pointcloud.pt \
-        --checkpoint_path checkpoints/checkpoint_latest.pt \
-        --frame_ids 0 50 100 150 200 \
-        --noise_levels 0.0 0.01 0.02 0.05 0.1 0.2
-"""
+# Esperimento principale: aggiunge rumore crescente alle posizioni dei punti e confronta
+# PSNR e SSIM di rendering neurale e z-buffer. Secondo il paper il neurale dovrebbe peggiorare più lentamente.
+# Uso: python scripts/noise_robustness_experiment.py --sequence_path data/raw/7scenes/chess/seq-01 --pointcloud_path data/processed/chess_seq01_pointcloud.pt --checkpoint_path checkpoints/checkpoint_latest.pt --frame_ids 0 50 100 150 200 --noise_levels 0.0 0.01 0.02 0.05 0.1 0.2
 
 import argparse
 import os
@@ -71,7 +56,7 @@ def main():
     orig_h, orig_w = sample_depth.shape
     intrinsics = scale_intrinsics(DEFAULT_INTRINSICS, (orig_h, orig_w), (args.height, args.width))
 
-    # --- Pre-carico ground truth e pose per i frame di test, una volta sola ---
+    # ground truth e pose li carico una volta sola
     targets = {}
     poses = {}
     for fid in args.frame_ids:
@@ -84,8 +69,7 @@ def main():
     for sigma in args.noise_levels:
         print(f"\n--- Livello di rumore: sigma={sigma} m ---")
 
-        # STESSA point cloud rumorosa usata da ENTRAMBI i metodi, per un
-        # confronto onesto (la variabile che cambia e' solo l'aggregazione)
+        # la stessa point cloud rumorosa va a tutti e due i metodi, cambia solo come aggregano
         noisy_points = add_gaussian_noise_to_points(points_world_clean, sigma, seed=args.seed)
         noisy_points_np = noisy_points.cpu().numpy()
 
@@ -124,7 +108,6 @@ def main():
         results["ssim_neural"].append(mean_ssim_neural)
         results["ssim_zbuffer"].append(mean_ssim_zbuffer)
 
-    # --- Grafici finali: PSNR e SSIM in funzione del rumore ---
     os.makedirs(args.output_dir, exist_ok=True)
 
     fig, axes = plt.subplots(1, 2, figsize=(12, 5))
@@ -151,7 +134,7 @@ def main():
     plt.close(fig)
     print(f"\nGrafico salvato: {out_path}")
 
-    # --- Salvo anche i numeri grezzi, utili per la presentazione/tabelle ---
+    # salvo anche i numeri per le tabelle della presentazione
     results_path = os.path.join(args.output_dir, "noise_robustness_results.npz")
     np.savez(results_path, **{k: np.array(v) for k, v in results.items()})
     print(f"Dati grezzi salvati: {results_path}")
