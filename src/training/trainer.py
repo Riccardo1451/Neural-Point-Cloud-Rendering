@@ -1,15 +1,6 @@
-"""
-trainer.py
-
-Il training loop vero: per ogni batch di viste target,
-1. per ciascuna vista, voxelizza la point cloud globale della scena usando
-   le feature apprese correnti + la direzione di vista di quella camera
-2. impila i volumi risultanti in un batch, li passa alla rete
-3. confronta l'immagine renderizzata con il ground truth (perceptual loss)
-4. backpropaga - il gradiente aggiorna SIA i pesi della rete SIA le feature
-   dei punti (stesso optimizer, stessi passi, esattamente come descritto
-   nella Sezione 3.6 del paper)
-"""
+# Training loop: per ogni vista voxelizza la point cloud con le feature correnti,
+# passa il batch alla rete e fa backward sulla perceptual loss.
+# Il gradiente aggiorna sia la rete che le feature dei punti (Sezione 3.6 del paper).
 
 import os
 
@@ -47,8 +38,7 @@ class Trainer:
         self.device = device
         self.checkpoint_dir = checkpoint_dir
 
-        # Stesso optimizer per i pesi della rete E per le feature dei punti -
-        # vengono aggiornati insieme, come descritto nel paper (Sezione 3.6)
+        # un solo optimizer per rete e feature dei punti, come nel paper
         params = list(self.model.parameters()) + list(self.point_feature_table.parameters())
         self.optimizer = torch.optim.Adam(params, lr=lr)
 
@@ -58,15 +48,7 @@ class Trainer:
         self.global_step = 0
 
     def _build_volume_batch(self, poses: torch.Tensor) -> torch.Tensor:
-        """
-        Voxelizza la point cloud globale per ciascuna posa nel batch, e
-        impila i risultati. Ogni vista ha una voxelizzazione DIVERSA
-        (dipende dalla posizione/orientamento della camera), anche se la
-        point cloud sottostante e' sempre la stessa.
-
-        Returns:
-            (B, C, P, H, W) - pronto per il forward della rete
-        """
+        """Voxelizza la point cloud per ogni pose del batch e ritorna (B, C, P, H, W)."""
         volumes = []
         for i in range(poses.shape[0]):
             pose = poses[i]
@@ -85,21 +67,12 @@ class Trainer:
                 width=self.width,
                 num_planes=self.num_planes,
             )
-            volumes.append(volume.permute(3, 0, 1, 2))  # (C, P, H, W)
+            volumes.append(volume.permute(3, 0, 1, 2))  # la rete vuole i canali prima: (C, P, H, W)
 
-        return torch.stack(volumes, dim=0)  # (B, C, P, H, W)
+        return torch.stack(volumes, dim=0)
 
     def train_step(self, target_images: torch.Tensor, poses: torch.Tensor) -> tuple:
-        """
-        Un passo di training su un batch di viste.
-
-        Args:
-            target_images: (B, 3, H, W) ground truth
-            poses: (B, 4, 4)
-
-        Returns:
-            (loss_value: float, predicted_images: (B, 3, H, W) tensor, staccato dal grafo)
-        """
+        """Un passo di training, ritorna la loss e le immagini predette (staccate dal grafo)."""
         self.model.train()
         target_images = target_images.to(self.device)
         poses = poses.to(self.device)
@@ -119,7 +92,7 @@ class Trainer:
 
     @torch.no_grad()
     def eval_step(self, target_images: torch.Tensor, poses: torch.Tensor) -> tuple:
-        """Come train_step, ma senza backward - per il set di validazione."""
+        """Come train_step ma senza backward, per la validazione."""
         self.model.eval()
         target_images = target_images.to(self.device)
         poses = poses.to(self.device)
