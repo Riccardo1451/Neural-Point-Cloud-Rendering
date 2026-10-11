@@ -1,19 +1,6 @@
-"""
-debug_voxelization_fused.py
-
-Confronta la ricostruzione grezza (stesso test di sanita' di prima) usando:
-(a) SOLO il frame bersaglio, come nel test precedente
-(b) una point cloud FUSA da più frame della sequenza
-
-L'obiettivo e' vedere se fondere piu' viste riduce i "buchi" dovuti al
-rumore/occlusioni di un singolo frame (schermi, superfici riflettenti, ecc.)
-
-Uso:
-    python scripts/debug_voxelization_fused.py \
-        --sequence_path data/raw/7scenes/chess/seq-01 \
-        --target_frame_id 0 \
-        --num_fusion_frames 20
-"""
+# Confronta la ricostruzione grezza fatta con il solo frame target e con più frame fusi,
+# per vedere se la fusione chiude i buchi (schermi, superfici riflettenti...).
+# Uso: python scripts/debug_voxelization_fused.py --sequence_path data/raw/7scenes/chess/seq-01 --target_frame_id 0 --num_fusion_frames 20
 
 import argparse
 import os
@@ -44,7 +31,7 @@ from src.voxelization.multiplane import (
 
 
 def rough_reconstruction(volume, occupancy):
-    """Media dei piani occupati - stesso check di sanita' usato prima."""
+    """Media dei piani occupati per ogni pixel, come in debug_voxelization.py."""
     occ_count = occupancy.sum(axis=0, keepdims=True).astype(np.float32)
     occ_count_safe = np.where(occ_count > 0, occ_count, 1.0)
     recon = volume.sum(axis=0) / occ_count_safe[0, :, :, None]
@@ -65,7 +52,6 @@ def main():
     parser.add_argument("--output_dir", type=str, default="outputs")
     args = parser.parse_args()
 
-    # --- Frame bersaglio: quello su cui valutiamo la ricostruzione ---
     frame_str = f"frame-{args.target_frame_id:06d}"
     target_color = load_color(os.path.join(args.sequence_path, f"{frame_str}.color.png"))
     target_depth = load_depth(os.path.join(args.sequence_path, f"{frame_str}.depth.png"))
@@ -76,7 +62,7 @@ def main():
         DEFAULT_INTRINSICS, orig_size=(orig_h, orig_w), new_size=(args.height, args.width)
     )
 
-    # --- (a) Point cloud dal SOLO frame bersaglio ---
+    # (a) solo il frame target
     points_single, colors_single = unproject_depth_to_pointcloud(
         target_depth, target_color, target_pose, stride=1
     )
@@ -86,13 +72,10 @@ def main():
     )
     recon_single = rough_reconstruction(volume_single, occ_single)
 
-    # --- (b) Point cloud FUSA da più frame della sequenza ---
+    # (b) point cloud fusa da più frame
     all_frame_ids = list_available_frame_ids(args.sequence_path)
     print(f"Frame disponibili nella sequenza: {len(all_frame_ids)}")
 
-    # Seleziono i frame in base a quanto la posizione della camera differisce
-    # dal target (baseline), non in base alla vicinanza nell'indice/tempo -
-    # vedi select_frames_by_baseline per la motivazione.
     fusion_frame_ids = select_frames_by_baseline(
         args.sequence_path,
         all_frame_ids,
@@ -117,7 +100,6 @@ def main():
     print(f"Occupazione voxel - singolo frame: {occ_single.mean() * 100:.2f}%")
     print(f"Occupazione voxel - fusione:       {occ_fused.mean() * 100:.2f}%")
 
-    # --- Visualizzazione a confronto ---
     color_resized = cv2.resize(target_color, (args.width, args.height), interpolation=cv2.INTER_AREA)
 
     fig, axes = plt.subplots(1, 3, figsize=(15, 5))

@@ -1,14 +1,5 @@
-"""
-debug_perceptual_loss.py
-
-Verifica rapida della perceptual loss: al primo avvio scarica i pesi
-pre-allenati di VGG-19 (~550 MB, serve connessione internet) - poi testa
-che il forward pass produca un numero sensato e che il gradiente si
-propaghi correttamente rispetto all'immagine predetta.
-
-Uso:
-    python scripts/debug_perceptual_loss.py
-"""
+# Test veloce della perceptual loss. La prima volta scarica i pesi di VGG-19 (circa 550 MB).
+# Uso: python scripts/debug_perceptual_loss.py
 
 import os
 import sys
@@ -35,7 +26,7 @@ def main():
     print(f"Loss (immagini casuali, dovrebbe essere > 0): {loss.item():.6f}")
     assert loss.item() > 0, "Loss a zero con immagini casuali diverse - qualcosa non torna"
 
-    # Sanity check aggiuntivo: loss tra un'immagine e se stessa deve essere ~0
+    # un'immagine confrontata con se stessa deve dare loss circa 0
     loss_self = loss_fn(target, target)
     print(f"Loss (stessa immagine confrontata con se stessa, dovrebbe essere ~0): {loss_self.item():.8f}")
     assert loss_self.item() < 1e-5, "Loss non nulla confrontando un'immagine con se stessa - bug!"

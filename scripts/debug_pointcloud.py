@@ -1,14 +1,6 @@
-"""
-debug_pointcloud.py
-
-Script di debug: carica UN frame di 7-Scenes, genera la point cloud
-world-space con pointcloud_utils, stampa qualche statistica di sanità
-e la salva come .ply per ispezionarla visivamente (es. con Open3D,
-MeshLab, o CloudCompare).
-
-Uso:
-    python scripts/debug_pointcloud.py --frame_path data/raw/7scenes/chess/seq-01 --frame_id 0
-"""
+# Genera la point cloud di un singolo frame, stampa qualche statistica e la salva
+# in .ply (da aprire con MeshLab o CloudCompare) più uno snapshot PNG.
+# Uso: python scripts/debug_pointcloud.py --frame_path data/raw/7scenes/chess/seq-01 --frame_id 0
 
 import argparse
 import os
@@ -18,7 +10,7 @@ import numpy as np
 import open3d as o3d
 import matplotlib.pyplot as plt
 
-# Permette di importare src/ anche lanciando lo script dalla root del progetto
+# per poter importare src/ lanciando lo script dalla root
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.datasets.pointcloud_utils import (
@@ -30,17 +22,7 @@ from src.datasets.pointcloud_utils import (
 
 
 def save_projection_snapshot(points: np.ndarray, colors: np.ndarray, output_path: str, max_points: int = 30000):
-    """
-    Salva 3 proiezioni ortogonali (vista dall'alto, frontale, laterale) come PNG,
-    usando matplotlib - NON richiede nessun server grafico/display, funziona
-    ovunque (SSH, container, sistemi senza X11/Wayland configurato).
-
-    Args:
-        points: (N, 3) coordinate XYZ world-space
-        colors: (N, 3) colori RGB in [0, 1]
-        output_path: percorso del PNG di output
-        max_points: sottocampiona se la point cloud e' molto densa, solo per velocita' di plotting
-    """
+    """Salva tre proiezioni (alto, fronte, lato) in PNG con matplotlib, funziona anche senza display."""
     n = points.shape[0]
     if n > max_points:
         idx = np.random.default_rng(0).choice(n, size=max_points, replace=False)
@@ -59,7 +41,7 @@ def save_projection_snapshot(points: np.ndarray, colors: np.ndarray, output_path
         ax.scatter(points[:, i], points[:, j], c=colors, s=0.5)
         ax.set_title(title)
         ax.set_aspect("equal")
-        ax.invert_yaxis()  # convenzione immagine: y cresce verso il basso
+        ax.invert_yaxis()  # come nelle immagini, y verso il basso
 
     plt.tight_layout()
     plt.savefig(output_path, dpi=150)
@@ -116,7 +98,6 @@ def main():
     depth = load_depth(depth_path)
     pose = load_pose(pose_path)
 
-    # --- Statistiche di sanità sul depth, PRIMA di generare la point cloud ---
     valid_ratio = np.mean(~np.isnan(depth))
     print(f"Depth shape: {depth.shape}")
     print(f"Percentuale pixel di depth validi: {valid_ratio * 100:.1f}%")
@@ -125,7 +106,6 @@ def main():
     )
     print(f"Pose camera-to-world:\n{pose}")
 
-    # --- Generazione point cloud ---
     points, colors = unproject_depth_to_pointcloud(
         depth, color, pose, stride=args.stride
     )
@@ -133,7 +113,6 @@ def main():
     print(f"Bounding box XYZ min: {points.min(axis=0)}")
     print(f"Bounding box XYZ max: {points.max(axis=0)}")
 
-    # --- Salvataggio come .ply, ispezionabile con Open3D / MeshLab ---
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(points.astype(np.float64))
     pcd.colors = o3d.utility.Vector3dVector(colors.astype(np.float64))
@@ -142,14 +121,10 @@ def main():
     o3d.io.write_point_cloud(args.output, pcd)
     print(f"Point cloud salvata in: {args.output}")
 
-    # --- Visualizzazione, di default headless-safe con matplotlib ---
     snapshot_path = os.path.splitext(args.output)[0] + "_snapshot.png"
     save_projection_snapshot(points, colors, snapshot_path)
 
-    # --- Finestra interattiva Open3D, solo se esplicitamente richiesta ---
-    # Su alcuni setup Linux (Wayland/X11 non configurati, librerie GTK mancanti)
-    # questa chiamata puo' causare un crash a livello di sistema (segfault),
-    # non recuperabile da Python. Lo snapshot PNG sopra e' la via robusta di default.
+    # la finestra di Open3D su alcuni Linux (Wayland) va in segfault, per questo è solo con --show
     if args.show:
         print("Apro la finestra di visualizzazione Open3D (chiudila per terminare)...")
         o3d.visualization.draw_geometries([pcd])

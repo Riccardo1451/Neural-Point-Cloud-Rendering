@@ -1,21 +1,7 @@
-"""
-debug_voxelization.py
-
-Script di verifica per la voxelizzazione multi-piano:
-1. Carica un frame reale di 7-Scenes e genera la point cloud (come in
-   debug_pointcloud.py).
-2. Applica compute_multiplane_voxelization usando LA STESSA vista di camera
-   che ha catturato i punti - questo e' il test di sanita' piu' semplice:
-   se il volume ha senso, "appiattendolo" in modo grezzo dovremmo
-   riottenere qualcosa che assomiglia all'immagine originale.
-3. Salva alcune visualizzazioni via matplotlib (headless-safe):
-   - istogramma dei punti per piano di profondita'
-   - una ricostruzione grezza (media dei piani occupati) da confrontare
-     con l'immagine RGB originale
-
-Uso:
-    python scripts/debug_voxelization.py --frame_path data/raw/7scenes/chess/seq-01 --frame_id 0
-"""
+# Voxelizza un frame dalla stessa camera che l'ha catturato: appiattendo il volume
+# si dovrebbe riottenere qualcosa di simile all'immagine originale.
+# Salva il grafico dei voxel occupati per piano e la ricostruzione grezza.
+# Uso: python scripts/debug_voxelization.py --frame_path data/raw/7scenes/chess/seq-01 --frame_id 0
 
 import argparse
 import os
@@ -60,21 +46,18 @@ def main():
     pose = load_pose(pose_path)
     orig_h, orig_w = depth.shape
 
-    # --- Genero la point cloud, usando TUTTI i pixel (stride=1) per avere
-    #     una densita' realistica quando poi la voxelizziamo ---
+    # stride 1 per avere una densità realistica
     points_world, colors = unproject_depth_to_pointcloud(depth, color, pose, stride=1)
     print(f"Punti nella point cloud: {points_world.shape[0]}")
 
-    # --- Riscalo gli intrinseci alla risoluzione target del volume ---
     scaled_intrinsics = scale_intrinsics(
         DEFAULT_INTRINSICS, orig_size=(orig_h, orig_w), new_size=(args.height, args.width)
     )
     print(f"Intrinseci riscalati per {args.height}x{args.width}: {scaled_intrinsics}")
 
-    # --- Voxelizzazione, usando la STESSA vista che ha catturato i punti ---
     volume, occupancy = compute_multiplane_voxelization(
         points_world,
-        colors,  # qui usiamo il colore RGB come "feature" per semplicita' di ispezione
+        colors,  # come feature uso direttamente l'RGB così si vede subito se torna
         pose,
         scaled_intrinsics,
         height=args.height,
@@ -84,14 +67,12 @@ def main():
     print(f"Shape volume: {volume.shape}")
     print(f"Percentuale voxel totali occupati: {occupancy.mean() * 100:.2f}%")
 
-    # --- Statistica: quanti voxel occupati per piano ---
     occ_per_plane = occupancy.reshape(args.num_planes, -1).sum(axis=1)
     for p in range(args.num_planes):
         print(f"  Piano {p:2d}: {occ_per_plane[p]:6d} voxel occupati")
 
     os.makedirs(args.output_dir, exist_ok=True)
 
-    # --- Grafico: distribuzione dei punti lungo i piani di profondita' ---
     fig, ax = plt.subplots(figsize=(8, 4))
     ax.bar(range(args.num_planes), occ_per_plane)
     ax.set_xlabel("Indice piano (0 = piu' vicino alla camera)")
@@ -103,16 +84,11 @@ def main():
     plt.close(fig)
     print(f"Grafico occupazione salvato in: {occ_plot_path}")
 
-    # --- Ricostruzione grezza: media dei piani occupati, pixel per pixel ---
-    # NON e' il rendering finale del paper (quello lo fa la rete, con pesi
-    # appresi) - e' solo un check di sanita' manuale: se il volume contiene
-    # l'informazione giusta, questa media approssimativa dovrebbe comunque
-    # assomigliare all'immagine originale.
-    occ_count = occupancy.sum(axis=0, keepdims=True).astype(np.float32)  # (1, H, W)
+    # media dei piani occupati per pixel, non è il rendering vero (quello lo fa la rete)
+    occ_count = occupancy.sum(axis=0, keepdims=True).astype(np.float32)
     occ_count_safe = np.where(occ_count > 0, occ_count, 1.0)
     rough_reconstruction = volume.sum(axis=0) / occ_count_safe[0, :, :, None]
 
-    # Ridimensiono anche l'immagine originale alla stessa risoluzione per il confronto
     import cv2
     color_resized = cv2.resize(color, (args.width, args.height), interpolation=cv2.INTER_AREA)
 
