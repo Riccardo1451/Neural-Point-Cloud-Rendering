@@ -1,14 +1,5 @@
-"""
-sequence_fusion.py
-
-Fonde i punti di più frame di una sequenza 7-Scenes in un'unica point cloud
-world-space persistente della scena. Dato che ogni frame ha una pose nota,
-possiamo proiettare i punti di frame diversi nello stesso sistema di
-coordinate world e sommarli - questo riduce drasticamente i "buchi" dovuti
-al rumore/occlusioni di un singolo frame, perché un punto mancante in un
-frame può essere presente in un altro frame che ha visto la stessa
-superficie da un angolo diverso.
-"""
+# Fonde i punti di più frame della stessa sequenza in un'unica point cloud world space.
+# Così i buchi di un frame vengono riempiti dai frame che vedono la superficie da un'altra angolazione.
 
 import glob
 import os
@@ -25,19 +16,13 @@ from src.datasets.pointcloud_utils import (
 
 
 def list_available_frame_ids(sequence_path: str) -> list:
-    """
-    Trova tutti i frame_id disponibili in una cartella di sequenza,
-    ispezionando i file *.color.png presenti.
-
-    Returns:
-        Lista ordinata di interi (frame_id).
-    """
+    """Lista ordinata dei frame_id presenti nella cartella (guardando i .color.png)."""
     pattern = os.path.join(sequence_path, "frame-*.color.png")
     files = sorted(glob.glob(pattern))
     frame_ids = []
     for f in files:
         basename = os.path.basename(f)
-        # formato: frame-000000.color.png
+        # nome tipo frame-000000.color.png
         num_str = basename.split("-")[1].split(".")[0]
         frame_ids.append(int(num_str))
     return sorted(frame_ids)
@@ -52,29 +37,10 @@ def select_frames_by_baseline(
     max_frames: int = 20,
 ) -> list:
     """
-    Seleziona frame in base a quanto la posizione della camera differisce
-    da quella del frame bersaglio, invece che in base alla vicinanza
-    nell'indice/tempo.
-
-    Motivazione: frame temporalmente vicini spesso hanno una camera che si
-    e' mossa pochissimo, quindi vedono la scena dalla stessa identica
-    angolazione - poco utile per colmare buchi dovuti a riflessi IR che
-    dipendono dall'angolo di vista. Serve abbastanza "baseline" (differenza
-    di posizione) per catturare angolazioni diverse, ma non troppa, per
-    evitare drift di pose o cambiamenti di scena tra frame molto distanti.
-
-    Args:
-        sequence_path: cartella della sequenza
-        all_frame_ids: lista di tutti i frame_id disponibili
-        target_frame_id: frame bersaglio
-        min_baseline: distanza minima (metri) tra le posizioni di camera
-        max_baseline: distanza massima (metri)
-        max_frames: numero massimo di frame da selezionare (i piu' vicini
-                    al range [min_baseline, max_baseline], ordinati per
-                    distanza crescente)
-
-    Returns:
-        Lista di frame_id selezionati (include sempre il target).
+    Sceglie i frame in base a quanto si è spostata la camera rispetto al target
+    (distanza tra min_baseline e max_baseline, in metri), non in base all'indice.
+    I frame vicini nel tempo vedono quasi la stessa cosa, quelli troppo lontani rischiano drift.
+    Il target è sempre incluso.
     """
     target_pose = load_pose(
         os.path.join(sequence_path, f"frame-{target_frame_id:06d}.pose.txt")
@@ -103,22 +69,7 @@ def fuse_frames_to_pointcloud(
     frame_ids: list,
     pixel_stride: int = 4,
 ):
-    """
-    Carica una lista di frame e fonde le loro point cloud world-space
-    in un'unica nuvola.
-
-    Args:
-        sequence_path: cartella della sequenza (es. .../chess/seq-01)
-        frame_ids: lista di interi, quali frame includere nella fusione
-        pixel_stride: sottocampionamento pixel PER FRAME - importante per
-                      tenere sotto controllo la dimensione totale quando si
-                      fondono molti frame insieme (es. stride=4 -> 1/16 dei
-                      pixel per frame, ma un frame in piu' nella fusione)
-
-    Returns:
-        points_world: (N, 3) point cloud fusa
-        colors: (N, 3) colori corrispondenti
-    """
+    """Carica i frame indicati e concatena le loro point cloud in una sola (punti e colori)."""
     all_points = []
     all_colors = []
 
@@ -132,6 +83,7 @@ def fuse_frames_to_pointcloud(
         depth = load_depth(depth_path)
         pose = load_pose(pose_path)
 
+        # con tanti frame lo stride va tenuto alto, con 4 si tiene 1 pixel su 16
         points, colors = unproject_depth_to_pointcloud(
             depth, color, pose, stride=pixel_stride
         )
