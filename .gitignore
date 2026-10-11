@@ -39,7 +39,3 @@ Thumbs.db
 .python-version
 *.env
 .env
-
-src/__pycache__/
-src/models/__pycache__/
-src/voxelization/__pycache__/
