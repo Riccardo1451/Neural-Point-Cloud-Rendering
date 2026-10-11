@@ -1,16 +1,4 @@
-"""
-render_head.py
-
-Avvolge il backbone UNet3D con:
-1. Le attivazioni corrette sui suoi 4 canali di output per voxel: RGB
-   (sigmoid, per stare in [0, 1]) + peso di blending (softmax lungo la
-   dimensione dei piani, cosi' i pesi di ciascun pixel sommano a 1 tra
-   tutti i piani - una scelta implementativa ragionevole non specificata
-   esplicitamente nel paper, ma coerente con l'idea di "quanto contribuisce
-   ciascun piano" descritta nella Sezione 3.4).
-2. Il blending finale: I = somma sui piani di (RGB_piano * peso_piano),
-   esattamente la formula del paper.
-"""
+# Rete completa: UNet3D + attivazioni sull'output + blending dei piani nell'immagine finale.
 
 import torch
 import torch.nn as nn
@@ -19,16 +7,7 @@ from src.models.unet3d import UNet3D
 
 
 class MultiPlaneRenderNetwork(nn.Module):
-    """
-    Rete completa: dal volume di feature aggregate (output della
-    voxelizzazione) all'immagine finale renderizzata.
-
-    Args:
-        in_channels: canali di input per voxel (es. 8 feature apprese del
-                     punto + 3 di direzione di vista = 11, vedi Sezione 3.2)
-        base_channels, num_levels, bottleneck_dilation: passati al backbone
-                     UNet3D, vedi unet3d.py per i dettagli
-    """
+    """Dal volume di feature (B, C, P, H, W) all'immagine renderizzata (B, 3, H, W)."""
 
     def __init__(
         self,
@@ -47,26 +26,13 @@ class MultiPlaneRenderNetwork(nn.Module):
         )
 
     def forward(self, volume: torch.Tensor) -> dict:
-        """
-        Args:
-            volume: (B, in_channels, P, H, W) - il volume aggregato dalla
-                    voxelizzazione multi-piano
-
-        Returns:
-            dict con:
-                "blended_image": (B, 3, H, W) - l'immagine finale renderizzata
-                "per_plane_rgb": (B, 3, P, H, W) - RGB predetto per ciascun piano
-                                 (utile per debug/visualizzazione, es. per
-                                 vedere cosa "vede" ogni singolo piano)
-                "per_plane_alpha": (B, 1, P, H, W) - peso di blending per
-                                   ciascun piano (softmax lungo P, sommano
-                                   a 1 per ogni pixel)
-        """
+        """Ritorna l'immagine finale e, per il debug, RGB e pesi di ogni piano."""
         raw = self.backbone(volume)  # (B, 4, P, H, W)
 
-        rgb = torch.sigmoid(raw[:, :3])       # (B, 3, P, H, W)
-        alpha_logits = raw[:, 3:4]            # (B, 1, P, H, W)
-        alpha = torch.softmax(alpha_logits, dim=2)  # softmax lungo la dimensione P
+        rgb = torch.sigmoid(raw[:, :3])
+        alpha_logits = raw[:, 3:4]
+        # softmax sui piani così per ogni pixel i pesi sommano a 1 (il paper non lo specifica)
+        alpha = torch.softmax(alpha_logits, dim=2)
 
         blended_image = (rgb * alpha).sum(dim=2)  # (B, 3, H, W)
 
